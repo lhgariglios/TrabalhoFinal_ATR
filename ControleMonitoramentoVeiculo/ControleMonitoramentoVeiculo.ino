@@ -1,4 +1,5 @@
 #include <driver/gpio.h>
+#include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -33,6 +34,11 @@ QueueHandle_t buffer;
 #define Sensor_DELAY 50
 #define Temp_DELAY 1000
 #define LM75_ADDR 0x48
+
+// Variáveis globais
+bool frenagem;
+int acelerador;
+int porcentagem_pedal;
 
 void setup() {
 
@@ -77,8 +83,8 @@ void setup() {
   queue_dist = xQueueCreate(5, sizeof(int));
 
   // Iniciar as tarefas
-  xTaskCreate(pedal, "pedal", 2048, NULL, 3, NULL);
-  xTaskCreate(freio, "freio", 2048, NULL, 3, NULL);
+  xTaskCreate(pedal_acelerador, "pedal_acelerador", 2048, NULL, 3, NULL);
+  xTaskCreate(pedal_freio, "pedal_freio", 2048, NULL, 3, NULL);
   xTaskCreate(temperatura, "temperatura", 2048, NULL, 1, NULL);
   xTaskCreate(distancia, "distancia", 2048, NULL, 2, NULL);
 
@@ -113,8 +119,10 @@ void callback(char *topic, byte *payload, unsigned int length) {
   }
 }
 
+// Sensores
+
 // Leitura do Pedal do Acelerador
-void pedal(){
+void pedal_acelerador(){
   for(;;){
     int acel = 1000*(analogRead(34)/ 4095);
     client.publish("acelerador", string(acel));
@@ -123,7 +131,7 @@ void pedal(){
 } 
 
 // Leitura do Pedal do Freio
-void freio(){
+void pedal_freio(){
    for(;;){
     int freio = 1000*(analogRead(35)/ 4095);
     client.publish("acelerador", string(freio));
@@ -167,5 +175,27 @@ void distancia(){
     dist = duration * 343 / 2; // distância *10^-4
     client.publish("distancia", string(dist));
     osDelay(Sensor_DELAY);
+  }
+}
+
+// Sistemas de Controle
+
+void freio(){
+  for(;;){
+    String mensagem;
+    xQueueReceive(queue_freio, &mensagem, portMAX_DELAY);
+    if(atoi(mensagem) >= 10000){
+      frenagem = true;
+    }else{
+      frenagem = false;
+    }
+  }
+}
+
+void acelerador(){
+  for(;;){
+    String mensagem;
+    xQueueReceive(queue_acel, &mensagem, portMAX_DELAY);
+    porcentagem_pedal = atoi(mensagem);
   }
 }
